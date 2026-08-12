@@ -1,0 +1,215 @@
+{
+  "name": "ETL AI Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "File_Upload",
+        "formDescription": "Upload the student data",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "File_Upload",
+              "fieldType": "file"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "fc670321-82ff-4916-8cea-92ba48998263",
+      "name": "CSV Upload",
+      "webhookId": "32d8c20e-8a53-48f5-9d0b-ab6cbcc7795d"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "File_Upload",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ],
+      "id": "26f7af10-4817-44c1-883b-ad8e6a3daf88",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=\nClean this student  enrollment row and return ONLY a JSON object. \n\nRow data: {{ JSON.stringify($json) }}\n\nRules: \n- Name: Title Case (Manoj K)\n- Email: if invalid set INVALID_EMAIL\n- Phone: if less than 10 digits set MISSING\n- Course: only Python or Machine Learning or Data Science. \n- Fee_Paid: yes/YES = true, no/NO = false\n- City: 'Title Case' empty=UNKNOWN\n- Enrolled_Date: Convert to YYYY-MM-DD\n\nReturn ONLY raw JSON. No explanation. No Markdown. ",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        672,
+        0
+      ],
+      "id": "61e05332-228b-4a47-a12c-b5127573a553",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        672,
+        208
+      ],
+      "id": "eabb9035-f7c8-4077-969f-dc9c395acf7b",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "LYdohCwzAkPBgVEA",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "CSV Data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        464,
+        0
+      ],
+      "id": "9e7b692c-ccee-4102-bcc9-6b51f957d0cd",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of items) {\n  // Change `output` if your AI response is stored in a different field\n  let raw = item.json.output ?? item.json.text ?? item.json.response ?? item.json;\n\n  // If the AI output is a JSON string, unwrap and parse it\n  if (typeof raw === 'string') {\n    raw = raw.trim();\n\n    // Removes Markdown code fences if the AI used them\n    raw = raw.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/i, '');\n\n    try {\n      raw = JSON.parse(raw);\n    } catch {\n      // If raw text contains an array somewhere inside it\n      const match = raw.match(/\\[[\\s\\S]*\\]/);\n      if (!match) {\n        results.push({\n          json: { error: 'Could not find a valid JSON array', raw },\n        });\n        continue;\n      }\n      raw = JSON.parse(match[0]);\n    }\n  }\n\n  const students = Array.isArray(raw) ? raw : [raw];\n\n  for (const student of students) {\n    const email =\n      typeof student.Email === 'string' &&\n      /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(student.Email)\n        ? student.Email.trim().toLowerCase()\n        : null;\n\n    const phone =\n      typeof student.Phone === 'string' &&\n      student.Phone !== 'MISSING'\n        ? student.Phone.replace(/\\D/g, '')\n        : null;\n\n    results.push({\n      json: {\n        Student_ID: student.Student_ID?.trim() || null,\n        Name: student.Name?.trim() || null,\n        Email: email,\n        Phone: phone,\n        Course: student.Course?.trim() || null,\n        Fee_Paid: Boolean(student.Fee_Paid),\n        City: student.City?.trim() || null,\n        Enrolled_Date: student.Enrolled_Date || null,\n\n        // Flags help you route or review incomplete records\n        needs_email_review: !email,\n        needs_phone_review: !phone,\n      },\n    });\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "97e54f8b-7b0f-484a-a3bf-88cf0a7ca91d",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "Output_CSV",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        0
+      ],
+      "id": "69e185d8-5f35-49d1-81a0-8c8d3574b136",
+      "name": "Convert to File"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "CSV Upload": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "19511479-c2bd-43df-9f74-0f568e596863",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "38712638d392b79c5d16a61ec1723a943dd4f7da3625e76eca93064637900186"
+  },
+  "nodeGroups": [],
+  "id": "cryBEFnwBPzKXCxK",
+  "tags": []
+}
